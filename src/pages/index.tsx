@@ -3,8 +3,9 @@ import Head from "next/head";
 import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 
-import { api } from "~/utils/api";
+import { RouterOutputs, api } from "~/utils/api";
 import { Header } from "~/components/Header";
+import { useState } from "react";
 
 const Home: NextPage = () => {
   const hello = api.example.hello.useQuery({ text: "from tRPC" });
@@ -26,20 +27,72 @@ const Home: NextPage = () => {
 
 export default Home;
 
+// this type is required for the useState below
+// Topic comes from our router. It conveniently infers the type for us
+// so use RouterOutputs, get the topic router, get the getAll which returns the topics
+// it's returned as an array, so grab the first item in the router - it will use this to infer the type
+type Topic = RouterOutputs["topic"]["getAll"][0];
+
 const Content: React.FC = () => {
   const { data: sessionData } = useSession();
+  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
+
 
   const { data: topics, refetch: refetchTopics } = api.topic.getAll.useQuery(
     undefined,
     {
       // set to false to disable from automatically running
       enabled: sessionData?.user !== undefined,
+      onSuccess: (data) => {
+        // on success set to the current selected topic, or the first topic, or none
+        setSelectedTopic(selectedTopic ?? data[0] ?? null);
+      },
     }
   );
-    // hit the create method on the topic router in the backend
+  // hit the create method on the topic router in the backend
+  // on successful create, refetch all the topics
+  //TS def is tight and it wants a promise that we aren't awaiting so use void
   const createTopic = api.topic.create.useMutation({
+    onSuccess: () => {
+      void refetchTopics();
+    },
+  });
 
-  })
-
-  return <div>{JSON.stringify(topics)}</div>;
+  return (
+    <div className="mx-5 mt-5 grid grid-cols-4 gap-2">
+      <div className="px-2">
+        <ul className="menu rounded-box w-56 bg-base-100 p-2">
+          {topics?.map((topic) => (
+            <li key={topic.id}>
+              <a
+                href="#"
+                onClick={(evt) => {
+                  evt.preventDefault();
+                  setSelectedTopic(topic);
+                }}
+              >
+                {topic.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <div className="className" />
+        <input
+          type="text"
+          placeholder="New Topic"
+          className="input-bordered input input-sm w-full"
+          // press enter and run the createTopic mutation to add a new topic
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              createTopic.mutate({
+                title: e.currentTarget.value,
+              });
+              e.currentTarget.value = "";
+            }
+          }}
+        />
+      </div>
+      <div className="col-span-3"></div>
+    </div>
+  );
 };
